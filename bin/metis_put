@@ -10,17 +10,32 @@ require 'securerandom'
 METIS_CONFIG_FILE=::File.expand_path("~/.metis.json")
 
 def ensure_config
+  # validate user-provided token and abort if not hex
+  if ENV['ETNA_TOKEN'] && (ENV['ETNA_TOKEN'][/\H/] || ENV['ETNA_TOKEN'].length != 32)
+      abort "ETNA_TOKEN was found in ENV but is not a 32 digit hex string (can contain only a-z and 0-9). Value seen: #{ENV['ETNA_TOKEN']}"
+  end
+
   if ::File.exists?(METIS_CONFIG_FILE)
-    return JSON.parse(File.read(METIS_CONFIG_FILE), symbolize_names: true)
+    config = JSON.parse(File.read(METIS_CONFIG_FILE), symbolize_names: true)
+    if !ENV['ETNA_TOKEN']
+      # Return immediately. No need for an update
+      return config
+    else
+      # Update the config
+      config[:etna_token] = ENV['ETNA_TOKEN']
+    end
   else
     config = {
       metis_uid: SecureRandom.hex,
-      metis_uid_name: 'METIS_UID'
+      metis_uid_name: 'METIS_UID',
+      etna_token: ENV['ETNA_TOKEN'] ? ENV['ETNA_TOKEN'] : SecureRandom.hex
     }
-    ::File.write(METIS_CONFIG_FILE,JSON.pretty_generate(config))
-    return config
   end
+  # Will reach here if updated token, or new config file
+  ::File.write(METIS_CONFIG_FILE,JSON.pretty_generate(config))
+  return config
 end
+
 METIS_CONFIG=ensure_config
 
 INITIAL_BLOB_SIZE = 2**10
@@ -75,9 +90,8 @@ class Upload
 end
 
 class MetisClient
-  def initialize(host, token)
+  def initialize(host)
     @host = host
-    @token = token
   end
 
   def upload(file_or_folder, project_name, bucket_name, folder_path)
@@ -209,7 +223,7 @@ class MetisClient
     https = Net::HTTP.new(uri.host,uri.port)
     https.use_ssl = true
     req = Net::HTTP::Post.new(uri.request_uri)
-    req['Authorization'] = "Etna #{@token}"
+    req['Authorization'] = "Etna #{METIS_CONFIG[:etna_token]}"
     cookie = CGI::Cookie.new(METIS_CONFIG[:metis_uid_name], METIS_CONFIG[:metis_uid])
     req['Cookie'] = cookie.to_s
 
@@ -238,12 +252,15 @@ METIS_PATH=%r!
   $
 !x
 
-
-abort 'No environment variable TOKEN is set' if !ENV['TOKEN']
-
 USAGE=<<EOT
 Recursively upload files to a Metis folder
-Usage: metis_put <input files> metis://<host>/<project>/<bucket>/<folder_path> # e.g. metis_put input_folder input_file1 input_file2 metis://metis.etna-development.org/labors/files/my_folder
+
+Usage: metis_put <input files> metis://<host>/<project>/<bucket>/<folder_path> 
+
+Example: metis_put input_folder input_file1 input_file2 metis://metis.etna-development.org/labors/files/my_folder
+
+NOTE: Uploading requires a machine-specific 32digit Hex ID. This is automatically generated the first time this script 
+is run. The value CAN be everwritten using the environment variable ETNA_TOKEN but do so at your own risk.
 EOT
 
 abort USAGE if ARGV.length < 2
@@ -254,7 +271,7 @@ path=METIS_PATH.match(metis_path)
 
 abort USAGE unless path
 
-METIS=MetisClient.new(path[:host], ENV['TOKEN'])
+METIS=MetisClient.new(path[:host])
 
 input_files.each do |file_or_folder|
   METIS.upload(file_or_folder, path[:project_name], path[:bucket_name], path[:folder_path])
