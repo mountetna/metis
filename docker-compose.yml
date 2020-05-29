@@ -38,6 +38,8 @@ services:
     ports:
       - 3000:3000
     command: ./docker/app/puma.sh
+    depends_on:
+      - db
 
   webpack:
     <<: *app_base
