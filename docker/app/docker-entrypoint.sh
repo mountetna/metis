@@ -10,7 +10,7 @@ if [ -z "$SKIP_RUBY_SETUP" ]; then
   mkdir -p tmp/pids
   rm -f tmp/pids/*.pid
   if [ -z "$SKIP_DB_WAIT" ]; then
-    dockerize -wait tcp://db:5432 -timeout 60s
+    dockerize -wait tcp://metis_db:5432 -timeout 60s
   fi
   if ! [ -e tmp/db-migrated ]; then
     ./bin/metis migrate

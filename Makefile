@@ -9,7 +9,6 @@ help: ## Display help text
 .PHONY: lint help
 .DEFAULT_GOAL := help
 
-### Files ###
 vendor/bundle: Gemfile Gemfile.lock docker/app/Dockerfile
 				@ $(MAKE) bundle
 				@ touch vendor/bundle
@@ -20,9 +19,11 @@ tmp/docker-build-mark: $(wildcard docker/**/*) docker-compose.yml
 				docker-compose build metis_app
 				@ touch tmp/docker-build-mark
 
-### RAILS_ENV=development mode commands ###
+config.yml:
+				cp config.yml.template config.yml
+
 .PHONY: up
-up: ## Starts up the database, worker, and webservers of metis in the background.
+up: config.yml ## Starts up the database, worker, and webservers of metis in the background.
 				@ docker-compose up -d
 
 .PHONY: down

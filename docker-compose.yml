@@ -39,7 +39,7 @@ services:
       - 3000:3000
     command: ./docker/app/puma.sh
     depends_on:
-      - db
+      - metis_db
 
   metis_webpack:
     <<: *metis_base
