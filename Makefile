@@ -1,5 +1,5 @@
 # SHELL := /bin/bash
-DB_PORT = $(shell docker inspect --format='{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' db_1)
+DB_PORT = $(shell docker inspect --format='{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' metis_db_1)
 
 help: ## Display help text
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) /dev/null | \
@@ -15,9 +15,9 @@ vendor/bundle: Gemfile Gemfile.lock docker/app/Dockerfile
 				@ touch vendor/bundle
 
 tmp/docker-build-mark: $(wildcard docker/**/*) docker-compose.yml
-				docker-compose rm -f db
-				docker-compose pull db
-				docker-compose build app
+				docker-compose rm -f metis_db
+				docker-compose pull metis_db
+				docker-compose build metis_app
 				@ touch tmp/docker-build-mark
 
 ### RAILS_ENV=development mode commands ###
@@ -35,7 +35,7 @@ ps: ## Lists status of running metis processes
 
 .PHONY: bundle
 bundle: ## Executes a bundle install inside of the metis app context.
-				docker-compose run --rm app bundle install
+				docker-compose run --rm metis_app bundle install
 
 .PHONY: build
 build: ## Rebuilds the metis docker environment.  Does not clear volumes or databases, just rebuilds code components.
@@ -43,20 +43,20 @@ build: ## Rebuilds the metis docker environment.  Does not clear volumes or data
 
 .PHONY: console
 console: ## Starts an irb console inside of the metis app context.
-				docker-compose run --rm app bundle exec irb
+				docker-compose run --rm metis_app bundle exec irb
 
 .PHONY: migrate
 migrate: ## Executes dev and test migrations inside of the metis app context.
-				@ docker-compose run --rm app ./bin/metis migrate
-				@ docker-compose run -e METIS_ENV=test --rm app ./bin/metis migrate
+				@ docker-compose run --rm metis_app ./bin/metis migrate
+				@ docker-compose run -e METIS_ENV=test --rm metis_app ./bin/metis migrate
 
 .PHONY: test
 test: ## Execute (all) rspec tests inside of the metis app context.
-				@ docker-compose run -e METIS_ENV=test --rm app bundle exec rspec
+				@ docker-compose run -e METIS_ENV=test --rm metis_app bundle exec rspec
 
 .PHONY: bash
 bash: ## Start a bash shell inside of the app context.
-				@docker-compose exec app bash
+				@docker-compose exec metis_app bash
 
 .PHONY: db-port
 db-port: ## Print the db port associated with the app.

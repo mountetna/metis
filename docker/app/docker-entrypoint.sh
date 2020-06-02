@@ -12,6 +12,10 @@ if [ -z "$SKIP_RUBY_SETUP" ]; then
   if [ -z "$SKIP_DB_WAIT" ]; then
     dockerize -wait tcp://db:5432 -timeout 60s
   fi
+  if ! [ -e tmp/db-migrated ]; then
+    ./bin/metis migrate
+    touch tmp/db-migrated
+  fi
 else
   while ! bundle check >/dev/null 2>&1; do
     echo "Awaiting for make bundle on host..."
