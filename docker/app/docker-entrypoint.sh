@@ -12,7 +12,7 @@ if [ -z "$SKIP_RUBY_SETUP" ]; then
   if [ -z "$SKIP_DB_WAIT" ]; then
     dockerize -wait tcp://metis_db:5432 -timeout 60s
     if ! [ -e tmp/.migrated ]; then
-      ./bin/janus migrate
+      ./bin/metis migrate
       touch tmp/.migrated
     fi
   fi
