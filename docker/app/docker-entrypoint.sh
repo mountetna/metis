@@ -14,6 +14,7 @@ if [ -z "$SKIP_RUBY_SETUP" ]; then
     if ! [ -e tmp/.migrated ]; then
       ./bin/janus migrate
       touch tmp/.migrated
+    fi
   fi
 else
   while ! bundle check >/dev/null 2>&1; do
