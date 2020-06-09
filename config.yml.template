@@ -1,10 +1,3 @@
-# Base development config.yml file.
-# Assumes these network aliases:
-#  db -- metis reachable address pointing to the postgres instance
-#  janus.development.local -- HOST reachable address that will receive https redirects
-# Committing changes to this file won't effect production,
-# but it will effect all developer's environments, so let the team know
-# via slack when changes are expected here.
 ---
 :test:
   :log_file: /dev/null

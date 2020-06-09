@@ -28,7 +28,7 @@ up: config.yml ## Starts up the database, worker, and webservers of metis in the
 
 .PHONY: down
 down: ## Ends background metis processes
-				@ docker-compose down
+				@ docker-compose down --remove-orphans
 
 .PHONY: ps
 ps: ## Lists status of running metis processes
@@ -44,7 +44,7 @@ build: ## Rebuilds the metis docker environment.  Does not clear volumes or data
 
 .PHONY: console
 console: ## Starts an irb console inside of the metis app context.
-				docker-compose run --rm metis_app bundle exec irb
+				docker exec -ti "$$(docker ps --format '{{.Names}}' | grep metis_app)" bundle exec irb
 
 .PHONY: migrate
 migrate: ## Executes dev and test migrations inside of the metis app context.
@@ -57,7 +57,7 @@ test: ## Execute (all) rspec tests inside of the metis app context.
 
 .PHONY: bash
 bash: ## Start a bash shell inside of the app context.
-				@docker-compose exec metis_app bash
+				@docker exec -ti "$$(docker ps --format '{{.Names}}' | grep metis_app)" bash
 
 .PHONY: db-port
 db-port: ## Print the db port associated with the app.
