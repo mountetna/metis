@@ -7,6 +7,8 @@ gem 'pg'
 gem 'sequel'
 gem 'fog-aws'
 gem 'etna'
+gem 'dav4rack', git: 'https://github.com/planio-gmbh/dav4rack.git', branch: 'master'
+gem 'bundler'
 
 group :test do
   gem 'rspec'
@@ -17,4 +19,6 @@ group :test do
   gem 'timecop'
   gem 'database_cleaner'
   gem 'pry'
+  gem 'ruby-debug-ide'
+  gem 'debase'
 end

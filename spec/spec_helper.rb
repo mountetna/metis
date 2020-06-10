@@ -8,6 +8,9 @@ SimpleCov.start
 require 'bundler'
 Bundler.require(:default, :test)
 
+require 'dav4rack'
+require 'dav4rack/interceptor'
+
 ENV['METIS_ENV'] = 'test'
 
 require_relative '../lib/metis'
@@ -37,8 +40,18 @@ OUTER_APP = Rack::Builder.new do
   use Rack::Static, urls: ['/css', '/js', '/fonts', '/img'], root: 'lib/client'
   use Etna::ParseBody
   use Etna::SymbolizeParams
+
+  map '/webdav/projects/' do
+    run DAV4Rack::Handler.new(:resource_class => Metis::WebDavResource, :root_uri_path => '/webdav/projects/')
+  end
+
+  use DAV4Rack::Interceptor, :mappings => {
+      '/webdav/projects/' => {:resource_class => Metis::WebDavResource},
+  }
+
   use Etna::TestAuth
   use Metis::SetUid
+
   run Metis::Server.new
 end
 
@@ -336,11 +349,11 @@ def hmac_header(params={})
   end
 end
 
-def default_bucket(project_name)
+def default_bucket(project_name, bucket_name: 'files')
   @default_bucket ||= {}
   @default_bucket[project_name] ||= begin
-    stubs.create_bucket(project_name, 'files')
-    create( :bucket, project_name: project_name, name: 'files', owner: 'metis', access: 'viewer')
+    stubs.create_bucket(project_name, bucket_name)
+    create( :bucket, project_name: project_name, name: bucket_name, owner: 'metis', access: 'viewer')
   end
 end
 

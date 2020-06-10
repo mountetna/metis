@@ -48,8 +48,8 @@ console: ## Starts an irb console inside of the metis app context.
 
 .PHONY: migrate
 migrate: ## Executes dev and test migrations inside of the metis app context.
-				@ docker-compose run --rm metis_app ./bin/metis migrate
-				@ docker-compose run -e METIS_ENV=test --rm metis_app ./bin/metis migrate
+				@ docker exec "$$(docker ps --format '{{.Names}}' | grep metis_app)" ./bin/metis migrate
+				@ docker exec -e METIS_ENV=test "$$(docker ps --format '{{.Names}}' | grep metis_app)" ./bin/metis migrate
 
 .PHONY: test
 test: ## Execute (all) rspec tests inside of the metis app context.
