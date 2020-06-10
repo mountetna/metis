@@ -65,7 +65,7 @@ db-port: ## Print the db port associated with the app.
 
 .PHONY: psql
 psql: ## Start a psql shell conntected to the metis development db
-				@ docker exec -e PGPASSWORD=password "$$(docker ps --format '{{.Names}}' | grep metis_app)" psql -h metis_db -U developer -d metis_development
+				@ docker exec -ti -e PGPASSWORD=password "$$(docker ps --format '{{.Names}}' | grep metis_app)" psql -h metis_db -U developer -d metis_development
 
 .PHONY: logs
 logs: ## Follow logs of running containers
