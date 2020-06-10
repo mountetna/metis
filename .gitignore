@@ -23,4 +23,5 @@ spec/examples.txt
 *.woff
 *.woff2
 *.swp
+.docker-build-mark
 
