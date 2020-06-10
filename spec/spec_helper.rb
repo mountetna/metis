@@ -349,11 +349,11 @@ def hmac_header(params={})
   end
 end
 
-def default_bucket(project_name, bucket_name: 'files')
+def default_bucket(project_name, bucket_name: 'files', access: 'viewer')
   @default_bucket ||= {}
   @default_bucket[project_name] ||= begin
     stubs.create_bucket(project_name, bucket_name)
-    create( :bucket, project_name: project_name, name: bucket_name, owner: 'metis', access: 'viewer')
+    create( :bucket, project_name: project_name, name: bucket_name, owner: 'metis', access: access)
   end
 end
 

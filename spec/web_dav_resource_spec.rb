@@ -13,19 +13,24 @@ describe Metis::WebDavResource do
   let(:other_project_name) { 'sports' }
   let(:bucket_name) { 'files' }
   let(:other_bucket_name) { 'files' }
-  let!(:bucket) { default_bucket(project_name, bucket_name: bucket_name) }
-  let!(:other_bucket) { default_bucket(other_project_name, bucket_name: other_bucket_name) }
-  let!(:location) { stubs.create_file(project_name, bucket_name, file_name, contents) }
-  let(:contents) { "1. Burn the hydra's neck after cutting.\n2. Use a river to clean the stables." }
-  let(:file_name) { 'readme_hercules.txt' }
-  let(:file) { create_file(project_name, file_name, contents, bucket: bucket) }
+  let(:bucket_access) { 'viewer' }
+  let(:other_bucket_access) { 'viewer' }
+  let!(:bucket) { default_bucket(project_name, bucket_name: bucket_name, access: bucket_access) }
+  let!(:other_bucket) { default_bucket(other_project_name, bucket_name: other_bucket_name, access: other_bucket_access) }
   let(:hmac_params) { {} }
   let(:params) { {} }
   let(:env) { {} }
   let(:project_role) { :admin }
   let(:other_project_role) { :viewer }
   let(:permissions) { [[project_name, project_role], [other_project_name, other_project_role]] }
-  let(:user) { {email: 'zeus@olympus.org', first: 'Zeus', perm: permissions.map { |project, r| "#{r.to_s[0,1]}:#{project}" }.join(',')} }
+  let(:encoded_permissions) do
+    permissions.inject({}) do |projects_by_role, (proj_name, role)|
+      (projects_by_role[role] ||= []).push(proj_name)
+      projects_by_role
+    end.map { |role, projs| "#{role.to_s[0, 1]}:#{projs.join(',')}" }.join(';')
+  end
+
+  let(:user) { {email: 'zeus@olympus.org', first: 'Zeus', perm: encoded_permissions} }
   let(:propfind_xml) do
     <<-PROPFIND
 <?xml version="1.0" encoding="utf-8" ?>
@@ -39,7 +44,7 @@ describe Metis::WebDavResource do
     @application ||= Etna::Application.instance
   end
 
-  subject do
+  let(:subject_request) do
     # token = application.sign.jwt_token(user)
     token = Base64.strict_encode64(user.to_json)
     auth = Base64.strict_encode64("user:#{token}")
@@ -49,34 +54,129 @@ describe Metis::WebDavResource do
     last_response
   end
 
+  let(:statuses) do
+    response_xml.xpath('//d:multistatus/d:response').map do |response|
+      propstat = response.xpath('//d:propstat').first
+      propstat.xpath('//d:status').first.text
+    end
+  end
+
+  let(:hrefs) do
+    response = response_xml.xpath('//d:multistatus/d:response').last
+    response.xpath('//d:href').map(&:text).map { |href| URI.parse(href).path }
+  end
+
   def response_xml
     @response_xml ||= Nokogiri.XML(last_response.body) { |config| config.strict }
   end
 
-  describe 'fetching projects' do
-    let(:path) { '/webdav/projects/' }
+  describe 'propfind' do
     let(:method) { 'PROPFIND' }
     let(:env) { {'HTTP_DEPTH' => '1', input: propfind_xml} }
 
-    it 'does a thing' do
-      expect(subject.status).to eq(207)
-      response_xml.xpath('//d:multistatus/d:response').each do |response|
-        propstat = response.xpath('//d:propstat').first
-        expect(propstat.xpath('//d:status').first.text).to match(/200 OK/)
+    subject do
+      subject_request
+      expect(last_response.status).to eq(207)
+      statuses.each { |s| expect(s).to match(/200 OK/) }
+      # Consistent ordering so that tests are less fragile.
+      hrefs.sort
+    end
+
+    describe 'listing projects' do
+      let(:path) { '/webdav/projects/' }
+
+      it { is_expected.to eq(%W[/webdav/projects/ /webdav/projects/#{project_name}/ /webdav/projects/#{other_project_name}/].sort) }
+
+      context 'when missing access to a project' do
+        let(:permissions) { [[project_name, project_role]] }
+
+        it { is_expected.to eq(%W[/webdav/projects/ /webdav/projects/#{project_name}/].sort) }
+
+        context 'but the user is a super admin' do
+          let(:permissions) { [[:administration, :admin]] }
+
+          it { is_expected.to eq(%W[/webdav/projects/ /webdav/projects/#{project_name}/ /webdav/projects/#{other_project_name}/].sort) }
+        end
+      end
+    end
+
+    describe 'listing buckets' do
+      let(:path) { "/webdav/projects/#{other_project_name}/" }
+
+      it { is_expected.to eq(%W[/webdav/projects/#{other_project_name}/ /webdav/projects/#{other_project_name}/#{other_bucket_name}/].sort) }
+
+      context 'when role is less than bucket access level' do
+        let(:other_bucket_access) { 'editor' }
+
+        it { is_expected.to eq(%W[/webdav/projects/#{other_project_name}/].sort) }
       end
 
-      response = response_xml.xpath('//d:multistatus/d:response').last
-      hrefs = response.xpath('//d:href').map(&:text).map { |href| URI.parse(href).path }
-      expect(hrefs).to eq([])
+      context 'when the parent project is inaccessible' do
+        let(:permissions) { [] }
+
+        it 'should fail to find the resource' do
+          subject_request
+          expect(last_response.status).to eq(404)
+        end
+      end
+    end
+
+    describe 'listing folders and files' do
+      def directories_to_folder(directories, project_name, bucket)
+        directories.inject(nil) do |parent, segment|
+          create(:folder, folder: parent, folder_name: segment, project_name: project_name, bucket: bucket, author: 'someguy@example.org' )
+        end
+      end
+
+      let(:path) { "/webdav/projects/#{project_name}/#{bucket_name}/" }
+
+      let(:directories) { [] }
+      let(:file_name) { 'abc.txt' }
+      let(:folder) { directories_to_folder(directories, project_name, bucket) }
+      let(:contents) { 'abcdefg' }
+      let!(:location) { stubs.create_file(project_name, bucket_name, file_name, contents) }
+      let!(:file) { create_file(project_name, file_name, contents, bucket: bucket, folder: folder) }
+
+      let(:other_directories) { [] }
+      let(:other_file_name) { 'def.txt' }
+      let(:other_folder) { directories_to_folder(other_directories, other_project_name, other_bucket) }
+      let(:other_contents) { 'hijklmno' }
+      let!(:other_location) { stubs.create_file(other_project_name, other_bucket_name, other_file_name, other_contents) }
+      let!(:other_file) { create_file(project_name, other_file_name, other_contents, bucket: other_bucket, folder: other_folder) }
+
+      it { is_expected.to eq(%W[/webdav/projects/#{project_name}/#{bucket_name}/ /webdav/projects/#{project_name}/#{bucket_name}/#{file_name}].sort) }
+
+      context 'when multiple items exist together' do
+        let(:other_project_name) { project_name }
+        let(:other_bucket_name) { bucket_name }
+        let(:other_bucket) { bucket }
+
+        it { is_expected.to eq(%W[/webdav/projects/#{project_name}/#{bucket_name}/ /webdav/projects/#{project_name}/#{bucket_name}/#{file_name} /webdav/projects/#{project_name}/#{bucket_name}/#{other_file_name}].sort) }
+
+        context 'when some items are folders' do
+          let(:other_directories) { ['folder_1'] }
+
+          it { is_expected.to eq(%W[/webdav/projects/#{project_name}/#{bucket_name}/ /webdav/projects/#{project_name}/#{bucket_name}/#{file_name} /webdav/projects/#{project_name}/#{bucket_name}/folder_1/].sort) }
+        end
+      end
+
+      describe 'listing directories' do
+        let(:directories) { ['a', 'b'] }
+
+        it { is_expected.to eq(%W[/webdav/projects/#{project_name}/#{bucket_name}/ /webdav/projects/#{project_name}/#{bucket_name}/#{directories.first}/].sort) }
+
+        context 'inside of other directories' do
+          let(:path) { "/webdav/projects/#{project_name}/#{bucket_name}/#{directories.first}/" }
+
+          it { is_expected.to eq(%W[/webdav/projects/#{project_name}/#{bucket_name}/#{directories.first}/ /webdav/projects/#{project_name}/#{bucket_name}/#{directories.first}/#{directories[1]}/].sort) }
+
+          context 'containing files' do
+            let(:path) { "/webdav/projects/#{project_name}/#{bucket_name}/#{directories.first}/#{directories[1]}/" }
+
+            it { is_expected.to eq(%W[/webdav/projects/#{project_name}/#{bucket_name}/#{directories.first}/#{directories[1]}/ /webdav/projects/#{project_name}/#{bucket_name}/#{directories.first}/#{directories[1]}/#{file_name}].sort) }
+          end
+        end
+      end
     end
   end
-
-  # it 'downloads a file' do
-  #   hmac_header
-  #   get('/labors/download/files/readme_hercules.txt')
-  #   expect(last_response.status).to eq(200)
-  #   # normally our web server should catch this header and replace the
-  #   # contents; we can't do that with Rack::Test
-  #   expect(last_response.headers['X-Sendfile']).to eq(@location)
-  # end
 end

@@ -179,19 +179,19 @@ class Metis
 
   class BucketResourceNode < DataResourceNode
     def creation_date
-      first_created_bucket.try(:created_at) || Time.now
+      bucket&.created_at || Time.now
     end
 
     # Maybe should be last modified file?  But there is no index, not great query.
     def last_modified
-      last_updated_bucket.try(:updated_at) || Time.now
+      bucket&.updated_at || Time.now
     end
 
     def children
       return [] if bucket.nil?
 
-      folder_names = Metis::Folder.where(bucket: bucket, folder: nil).select(:folder_name).map(&:folder_name)
-      file_names = Metis::File.where(bucket: bucket, folder: nil).select(:file_name).map(&:file_name)
+      folder_names = Metis::Folder.where(bucket: bucket, folder_id: nil).select(:folder_name).map(&:folder_name)
+      file_names = Metis::File.where(bucket: bucket, folder_id: nil).select(:file_name).map(&:file_name)
 
       folder_names.map { |name| FolderResourceNode.new(user, self, name, bucket) } + \
         file_names.map { |name| FileResourceNode.new(user, self, name, bucket) }
@@ -202,7 +202,7 @@ class Metis
     end
 
     def path
-      "/"
+      ""
     end
   end
 
@@ -216,11 +216,11 @@ class Metis
     end
 
     def creation_date
-      folder.try(:created_at) || Time.now
+      folder&.created_at || Time.now
     end
 
     def last_modified
-      folder.try(:updated_at) || Time.now
+      folder&.updated_at || Time.now
     end
 
     def children
@@ -231,7 +231,7 @@ class Metis
     end
 
     def folder
-      @folder ||= Metis::Folder.from_path(bucket, path)
+      @folder ||= Metis::Folder.from_path(bucket, path).last
     end
   end
 
