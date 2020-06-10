@@ -18,7 +18,7 @@
     :metis: haggis
   :db:
     :adapter: postgres
-    :host: db
+    :host: metis_db
     :database: metis_test
     :user: developer
     :password: password
