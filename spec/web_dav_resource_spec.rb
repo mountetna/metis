@@ -9,20 +9,15 @@ describe Metis::WebDavResource do
     stubs.clear
   end
 
-  let(:project_name) { 'labors' }
-  let(:other_project_name) { 'sports' }
-  let(:bucket_name) { 'files' }
-  let(:other_bucket_name) { 'files' }
-  let(:bucket_access) { 'viewer' }
-  let(:other_bucket_access) { 'viewer' }
-  let!(:bucket) { default_bucket(project_name, bucket_name: bucket_name, access: bucket_access) }
-  let!(:other_bucket) { default_bucket(other_project_name, bucket_name: other_bucket_name, access: other_bucket_access) }
-  let(:hmac_params) { {} }
+  # Request configurations
   let(:params) { {} }
   let(:env) { {} }
+
+  # User / role configurations
   let(:project_role) { :admin }
   let(:other_project_role) { :viewer }
   let(:permissions) { [[project_name, project_role], [other_project_name, other_project_role]] }
+
   let(:encoded_permissions) do
     permissions.inject({}) do |projects_by_role, (proj_name, role)|
       (projects_by_role[role] ||= []).push(proj_name)
@@ -31,6 +26,31 @@ describe Metis::WebDavResource do
   end
 
   let(:user) { {email: 'zeus@olympus.org', first: 'Zeus', perm: encoded_permissions} }
+
+  # File configurations
+  let(:project_name) { 'labors' }
+  let(:other_project_name) { 'sports' }
+  let(:bucket_name) { 'files' }
+  let(:other_bucket_name) { 'files' }
+  let(:bucket_access) { 'viewer' }
+  let(:other_bucket_access) { 'viewer' }
+  let!(:bucket) { default_bucket(project_name, bucket_name: bucket_name, access: bucket_access) }
+  let!(:other_bucket) { default_bucket(other_project_name, bucket_name: other_bucket_name, access: other_bucket_access) }
+  let(:directories) { [] }
+  let(:file_name) { 'abc.txt' }
+  let(:folder) { directories_to_folder(directories, project_name, bucket) }
+  let(:contents) { 'abcdefg' }
+  let!(:location) { stubs.create_file(project_name, bucket_name, file_name, contents) }
+  let!(:file) { create_file(project_name, file_name, contents, bucket: bucket, folder: folder) }
+
+  let(:other_directories) { [] }
+  let(:other_file_name) { 'def.txt' }
+  let(:other_folder) { directories_to_folder(other_directories, other_project_name, other_bucket) }
+  let(:other_contents) { 'hijklmno' }
+  let!(:other_location) { stubs.create_file(other_project_name, other_bucket_name, other_file_name, other_contents) }
+  let!(:other_file) { create_file(project_name, other_file_name, other_contents, bucket: other_bucket, folder: other_folder) }
+
+  # Utility values
   let(:propfind_xml) do
     <<-PROPFIND
 <?xml version="1.0" encoding="utf-8" ?>
@@ -68,6 +88,46 @@ describe Metis::WebDavResource do
 
   def response_xml
     @response_xml ||= Nokogiri.XML(last_response.body) { |config| config.strict }
+  end
+ 
+  def directories_to_folder(directories, project_name, bucket)
+    directories.inject(nil) do |parent, segment|
+      create(:folder, folder: parent, folder_name: segment, project_name: project_name, bucket: bucket, author: 'someguy@example.org')
+    end
+  end
+
+  describe 'get' do
+    let(:method) { 'GET' }
+
+    subject do
+      subject_request
+      expect(last_response.status).to eq(200)
+      last_response.headers['X-Sendfile']
+    end
+
+    describe 'for top level' do
+      let(:path) { '/webdav/projects/' }
+
+      it { is_expected.to be_nil }
+    end
+
+    describe 'for a project' do
+      let(:path) { "/webdav/projects/#{project_name}/" }
+
+      it { is_expected.to be_nil }
+    end
+
+    describe 'for a bucket' do
+      let(:path) { "/webdav/projects/#{project_name}/#{bucket_name}/" }
+
+      it { is_expected.to be_nil }
+    end
+
+    describe 'for a file' do
+      let(:path) { "/webdav/projects/#{project_name}/#{bucket_name}/#{file_name}" }
+
+      it { is_expected.to eq(location) }
+    end
   end
 
   describe 'propfind' do
@@ -122,27 +182,7 @@ describe Metis::WebDavResource do
     end
 
     describe 'listing folders and files' do
-      def directories_to_folder(directories, project_name, bucket)
-        directories.inject(nil) do |parent, segment|
-          create(:folder, folder: parent, folder_name: segment, project_name: project_name, bucket: bucket, author: 'someguy@example.org' )
-        end
-      end
-
       let(:path) { "/webdav/projects/#{project_name}/#{bucket_name}/" }
-
-      let(:directories) { [] }
-      let(:file_name) { 'abc.txt' }
-      let(:folder) { directories_to_folder(directories, project_name, bucket) }
-      let(:contents) { 'abcdefg' }
-      let!(:location) { stubs.create_file(project_name, bucket_name, file_name, contents) }
-      let!(:file) { create_file(project_name, file_name, contents, bucket: bucket, folder: folder) }
-
-      let(:other_directories) { [] }
-      let(:other_file_name) { 'def.txt' }
-      let(:other_folder) { directories_to_folder(other_directories, other_project_name, other_bucket) }
-      let(:other_contents) { 'hijklmno' }
-      let!(:other_location) { stubs.create_file(other_project_name, other_bucket_name, other_file_name, other_contents) }
-      let!(:other_file) { create_file(project_name, other_file_name, other_contents, bucket: other_bucket, folder: other_folder) }
 
       it { is_expected.to eq(%W[/webdav/projects/#{project_name}/#{bucket_name}/ /webdav/projects/#{project_name}/#{bucket_name}/#{file_name}].sort) }
 
@@ -174,6 +214,15 @@ describe Metis::WebDavResource do
             let(:path) { "/webdav/projects/#{project_name}/#{bucket_name}/#{directories.first}/#{directories[1]}/" }
 
             it { is_expected.to eq(%W[/webdav/projects/#{project_name}/#{bucket_name}/#{directories.first}/#{directories[1]}/ /webdav/projects/#{project_name}/#{bucket_name}/#{directories.first}/#{directories[1]}/#{file_name}].sort) }
+
+            context 'without permissions' do
+              let(:permissions) { [] }
+
+              it 'should fail to find the resource' do
+                subject_request
+                expect(last_response.status).to eq(404)
+              end
+            end
           end
         end
       end
