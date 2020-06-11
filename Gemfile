@@ -1,6 +1,6 @@
 source 'https://rubygems.org'
 
-ruby '2.5.7'
+ruby '~> 2.5'
 
 gem 'rack'
 gem 'pg'
@@ -21,4 +21,5 @@ group :test do
   gem 'pry'
   gem 'ruby-debug-ide'
   gem 'debase'
+  gem 'pry-byebug'
 end
