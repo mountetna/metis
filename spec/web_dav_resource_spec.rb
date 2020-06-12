@@ -41,7 +41,8 @@ describe Metis::WebDavResource do
   let(:folder) { directories_to_folder(directories, project_name, bucket) }
   let(:contents) { 'abcdefg' }
   let!(:location) { stubs.create_file(project_name, bucket_name, file_name, contents) }
-  let!(:file) { create_file(project_name, file_name, contents, bucket: bucket, folder: folder) }
+  let(:read_only) { false }
+  let!(:file) { create_file(project_name, file_name, contents, bucket: bucket, folder: folder, read_only: read_only) }
 
   let(:other_directories) { [] }
   let(:other_file_name) { 'def.txt' }
@@ -96,8 +97,68 @@ describe Metis::WebDavResource do
     end
   end
 
+  describe 'put' do
+    let(:method) { 'PUT' }
+    let(:path) { "/webdav/projects/#{project_name}/#{bucket_name}/#{put_file_name}" }
+    let(:put_file_name) { 'my_new_file' }
+    let(:put_file_contents) { 'somebody once told me the world is kinda baloney' }
+    let(:env) { { input: put_file_contents } }
+
+    subject do
+      subject_request
+      expect(last_response.status).to eq(200)
+      ::File.read(Metis::File.from_path(bucket, "#{put_file_name}").data_block.location)
+    end
+
+    it { is_expected.to eq(put_file_contents) }
+
+    context 'for a file in the root path' do
+      let(:path) { "/webdav/#{put_file_name}"}
+
+      it 'is not allowed' do
+        subject_request
+        expect(last_response.status).to eq(401)
+      end
+    end
+
+    context 'for a file in a project path' do
+      let(:path) { "/webdav/#{project_name}/#{put_file_name}"}
+
+      it 'is not allowed' do
+        subject_request
+        expect(last_response.status).to eq(401)
+      end
+    end
+
+    context 'for a directory' do
+      let(:directories) { [put_file_name] }
+
+      it 'is not allowed' do
+        subject_request
+        expect(last_response.status).to eq(403)
+      end
+    end
+
+    context 'for a read only file' do
+      let(:file_name) { put_file_name }
+      let(:read_only) { true }
+
+      it 'is not allowed' do
+        subject_request
+        expect(last_response.status).to eq(403)
+      end
+    end
+
+    context 'for an existing file' do
+      let(:file_name) { put_file_name }
+
+      it { is_expected.to eq(put_file_contents) }
+    end
+  end
+
   describe 'get' do
     let(:method) { 'GET' }
+
 
     subject do
       subject_request

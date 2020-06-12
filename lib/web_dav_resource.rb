@@ -51,6 +51,23 @@ class Metis
       OK
     end
 
+    def put(request, response)
+      raise Forbidden unless is_writable?
+
+      io = request.body
+      # tempfile = "tmp/upload.#{Process.pid}.#{object_id}"
+      tempfile = Tempfile.new
+      open(tempfile, "wb") do |file|
+        while part = io.read(8192)
+          file << part
+        end
+      end
+
+      raise Forbidden unless inhabitant.upload!(tempfile)
+
+      OK
+    end
+
     def children
       return [] unless exist?
 
@@ -59,8 +76,12 @@ class Metis
       end
     end
 
+    def is_writable?
+      !inhabitant.nil? && inhabitant.is_writable?
+    end
+
     def exist?
-      !inhabitant.nil?
+      !inhabitant.nil? && inhabitant.exist?
     end
 
     def collection?
@@ -105,7 +126,15 @@ class Metis
     def find_child(segment)
       children.find do |node|
         node.path_segment == segment
-      end
+      end || writable_edge_node(segment)
+    end
+
+    def writable_edge_node(segment)
+      nil
+    end
+
+    def is_writable?
+      false
     end
 
     def children
@@ -130,6 +159,10 @@ class Metis
 
     def last_modified
       Time.now
+    end
+
+    def exist?
+      true
     end
   end
 
@@ -197,6 +230,10 @@ class Metis
         file_names.map { |name| FileResourceNode.new(user, self, name, bucket) }
     end
 
+    def writable_edge_node(segment)
+      WritableEdgeNode.new(user, self, segment, bucket)
+    end
+
     def bucket
       @bucket ||= Metis::Bucket.where(name: path_segment, project_name: parent.path_segment).first
     end
@@ -232,6 +269,10 @@ class Metis
 
     def folder
       @folder ||= Metis::Folder.from_path(bucket, path).last
+    end
+
+    def writable_edge_node(segment)
+      WritableEdgeNode.new(user, self, segment, bucket)
     end
   end
 
@@ -275,6 +316,65 @@ class Metis
 
     def directory?
       false
+    end
+
+    def is_writable?
+      true
+    end
+
+    def upload!(uploaded_file)
+      # Most of this is copied from a combination of upload_controller and etna_controller.
+      # Ideally this would be captured in a service class and shareable.
+      blob = Metis::Blob.new(tempfile: uploaded_file)
+
+      upload = Metis::Upload.find_or_create(
+          file_name: path,
+          bucket: bucket,
+          metis_uid: metis_uid,
+          project_name: bucket.project_name
+      ) do |f|
+        f.author = Metis::File.author(user)
+        f.file_size = 0
+        f.current_byte_position = 0
+        f.next_blob_size = ::File.size(blob.path)
+        f.next_blob_hash = Metis::File.md5(blob.path)
+      end
+
+      upload.append_blob(blob, 0, '')
+
+      folder_path, file_name = Metis::File.path_parts(upload.file_name)
+      folder = Metis::Folder.from_path(bucket, folder_path).last
+
+      file = Metis::File.from_folder(bucket, folder, file_name)
+
+      if file && file.read_only?
+        return false
+      end
+
+      if Metis::Folder.exists?(file_name, upload.bucket, folder)
+        return false
+      end
+
+      upload.finish!
+      true
+    end
+
+    def metis_uid
+      Metis.instance.sign.uid
+    end
+  end
+
+  class WritableEdgeNode < FileResourceNode
+    def file
+      nil
+    end
+
+    def exist?
+      false
+    end
+
+    def is_writable?
+      true
     end
   end
 end
