@@ -64,7 +64,6 @@ class Metis
       raise Forbidden unless is_writable?(:file)
 
       io = request.body
-      # tempfile = "tmp/upload.#{Process.pid}.#{object_id}"
       tempfile = Tempfile.new
       open(tempfile, "wb") do |file|
         while part = io.read(8192)
@@ -75,6 +74,21 @@ class Metis
       raise Forbidden unless inhabitant.upload!(tempfile)
 
       OK
+    end
+
+    def delete
+      raise NotFound unless exist?
+      raise Forbidden unless inhabitant.delete!
+
+      NoContent
+    end
+
+    def copy(dest_path, overwrite = false, depth = nil)
+      do_copy(dest_path, overwrite, depth, false)
+    end
+
+    def move(dest_path, overwrite=false)
+      do_copy(dest_path, overwrite, nil, true)
     end
 
     def children
@@ -107,6 +121,26 @@ class Metis
 
     protected
 
+    # For now, depth is ignored.
+    def do_copy(dest_path, overwrite, depth, is_move)
+      raise NotFound unless exist?
+      raise Forbidden unless inhabitant.copyable?
+
+      dest = DataResourceNode.descend(dest_path, user)
+      raise PreconditionFailed if dest.exist? && !overwrite
+
+      Metis.instance.db.transaction do
+        if dest.exist?
+          raise Conflict unless dest.delete!
+        end
+
+        raise NotFound unless inhabitant.copy!(dest)
+        inhabitant.delete! if is_move
+      end
+
+      NoContent
+    end
+
     def bucket_allowed?(bucket)
       true
       # bucket.allowed?(@user, @request.env['etna.hmac'])
@@ -132,6 +166,10 @@ class Metis
       end
     end
 
+    def parent_folder
+      parent.respond_to?(:folder) ? parent.folder : nil
+    end
+
     def find_child(segment)
       children.find do |node|
         node.path_segment == segment
@@ -140,6 +178,18 @@ class Metis
 
     def writable_edge_node(segment)
       nil
+    end
+
+    def copyable?
+      false
+    end
+
+    def copy!(dest)
+      false
+    end
+
+    def delete!
+      false
     end
 
     def is_writable?(type)
@@ -176,6 +226,10 @@ class Metis
 
     def exist?
       true
+    end
+
+    def bucket
+      nil
     end
   end
 
@@ -273,6 +327,26 @@ class Metis
       folder&.updated_at || Time.now
     end
 
+    def copyable?
+      true
+    end
+
+    def copy!(dest)
+      return false unless dest.bucket
+      Metis::Folder.find_or_create(folder_id: dest.parent_folder&.id, folder_name: dest.path_segment, bucket_id: dest.bucket.id, project_name: dest.bucket.project_name) do |f|
+        f.author = folder.author
+      end
+      true
+    end
+
+    def delete!
+      Metis.instance.db.transaction do
+        Metis::File.where(folder: folder).delete
+        Metis::Folder.where(folder: folder).delete
+        folder.remove!
+      end
+    end
+
     def children
       return [] if folder.nil?
 
@@ -320,6 +394,24 @@ class Metis
     def content_length
       return 0 if file.nil?
       stat.size
+    end
+
+    def copyable?
+      true
+    end
+
+    def copy!(dest)
+      return false unless dest.bucket
+      Metis::File.find_or_create(folder_id: dest.parent_folder&.id, file_name: dest.path_segment, bucket_id: dest.bucket.id, project_name: dest.bucket.project_name) do |f|
+        f.author = file.author
+        f.data_block = file.data_block
+      end
+      true
+    end
+
+    def delete!
+      file.remove!
+      true
     end
 
     def stat
@@ -392,7 +484,7 @@ class Metis
 
     def mkdir!
       Metis::Folder.create(
-          folder: parent.respond_to?(:folder) ? parent.folder : nil,
+          folder: parent_folder,
           folder_name: path_segment,
           bucket: bucket,
           project_name: bucket.project_name,

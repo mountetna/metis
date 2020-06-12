@@ -90,12 +90,71 @@ describe Metis::WebDavResource do
   def response_xml
     @response_xml ||= Nokogiri.XML(last_response.body) { |config| config.strict }
   end
- 
+
   def directories_to_folder(directories, project_name, bucket)
     directories.inject(nil) do |parent, segment|
       create(:folder, folder: parent, folder_name: segment, project_name: project_name, bucket: bucket, author: 'someguy@example.org')
     end
   end
+
+  ['copy', 'move'].each do |verb|
+    describe verb do
+      let(:method) { verb.upcase }
+      let(:source_path) { file_name }
+      let(:destination_path) { "new_thing" }
+      let(:destination_bucket_name) { destination_bucket.name }
+      let(:destination_project_name) { project_name }
+      let(:destination_bucket) { bucket }
+      let(:overwrite) { true }
+      let(:path) { "/webdav/projects/#{project_name}/#{bucket_name}/#{source_path}" }
+      let(:env) do
+        {
+            'HTTP_OVERWRITE' => overwrite ? 'T' : 'F',
+            'HTTP_DESTINATION' => "#{METIS_URL}/webdav/projects/#{destination_project_name}/#{destination_bucket_name}/#{destination_path}",
+        }
+      end
+
+      subject do
+        subject_request
+        expect(last_response.status).to eq(204)
+
+        {
+            sf_remains: !Metis::File.from_path(bucket, source_path).nil?,
+            sd_remains: !Metis::Folder.from_path(bucket, source_path).last.nil?,
+            dd_exists: !Metis::Folder.from_path(destination_bucket, destination_path).last.nil?,
+            df_exists: !Metis::File.from_path(destination_bucket, destination_path).nil?,
+        }
+      end
+
+      it { is_expected.to eq({dd_exists: false, df_exists: true, sd_remains: false, sf_remains: verb == 'copy', }) }
+
+      describe 'from a folder' do
+        let(:directories) { ['adirectory'] }
+        let(:source_path) { directories.first }
+
+        it { is_expected.to eq({dd_exists: true, df_exists: false, sf_remains: false, sd_remains: verb == 'copy', }) }
+      end
+
+      describe 'for non existent source' do
+        let(:source_path) { "abc" }
+
+        it 'is not allowed' do
+          subject_request
+          expect(last_response.status).to eq(404)
+        end
+      end
+
+      describe 'for a project dir' do
+        let(:path) { "/webdav/projects/#{project_name}/" }
+
+        it 'is not allowed' do
+          subject_request
+          expect(last_response.status).to eq(403)
+        end
+      end
+    end
+  end
+
 
   describe 'mkcol' do
     let(:method) { 'MKCOL' }
@@ -108,10 +167,10 @@ describe Metis::WebDavResource do
       Metis::Folder.from_path(bucket, mkcol_dir + "/").last&.folder_path
     end
 
-    it { is_expected.to eq ["#{mkcol_dir}"]  }
+    it { is_expected.to eq [mkcol_dir] }
 
     context 'for a folder in the root path' do
-      let(:path) { "/webdav/#{mkcol_dir}/"}
+      let(:path) { "/webdav/#{mkcol_dir}/" }
 
       it 'is not allowed' do
         subject_request
@@ -120,7 +179,7 @@ describe Metis::WebDavResource do
     end
 
     context 'for a folder in a project path' do
-      let(:path) { "/webdav/#{project_name}/#{mkcol_dir}/"}
+      let(:path) { "/webdav/#{project_name}/#{mkcol_dir}/" }
 
       it 'is not allowed' do
         subject_request
@@ -140,7 +199,7 @@ describe Metis::WebDavResource do
       context 'as the child of it' do
         let(:mkcol_dir) { "#{directories.first}/def" }
 
-        it { is_expected.to eq [directories.first, "def"]  }
+        it { is_expected.to eq [directories.first, "def"] }
       end
     end
 
@@ -159,7 +218,7 @@ describe Metis::WebDavResource do
     let(:path) { "/webdav/projects/#{project_name}/#{bucket_name}/#{put_file_name}" }
     let(:put_file_name) { 'my_new_file' }
     let(:put_file_contents) { 'somebody once told me the world is kinda baloney' }
-    let(:env) { { input: put_file_contents } }
+    let(:env) { {input: put_file_contents} }
 
     subject do
       subject_request
@@ -170,7 +229,7 @@ describe Metis::WebDavResource do
     it { is_expected.to eq(put_file_contents) }
 
     context 'for a file in the root path' do
-      let(:path) { "/webdav/#{put_file_name}"}
+      let(:path) { "/webdav/#{put_file_name}" }
 
       it 'is not allowed' do
         subject_request
@@ -179,7 +238,7 @@ describe Metis::WebDavResource do
     end
 
     context 'for a file in a project path' do
-      let(:path) { "/webdav/#{project_name}/#{put_file_name}"}
+      let(:path) { "/webdav/#{project_name}/#{put_file_name}" }
 
       it 'is not allowed' do
         subject_request
