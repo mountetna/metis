@@ -40,6 +40,14 @@ class Metis
       @options[:root_uri_path]
     end
 
+    def make_collection
+      raise NotFound if inhabitant.nil?
+      raise Forbidden unless is_writable?(:directory)
+      raise Conflict unless inhabitant.mkdir!
+
+      Created
+    end
+
     def get(request, response)
       raise NotFound unless exist?
 
@@ -52,7 +60,8 @@ class Metis
     end
 
     def put(request, response)
-      raise Forbidden unless is_writable?
+      raise NotFound if inhabitant.nil?
+      raise Forbidden unless is_writable?(:file)
 
       io = request.body
       # tempfile = "tmp/upload.#{Process.pid}.#{object_id}"
@@ -76,8 +85,8 @@ class Metis
       end
     end
 
-    def is_writable?
-      !inhabitant.nil? && inhabitant.is_writable?
+    def is_writable?(type)
+      !inhabitant.nil? && inhabitant.is_writable?(type)
     end
 
     def exist?
@@ -133,7 +142,11 @@ class Metis
       nil
     end
 
-    def is_writable?
+    def is_writable?(type)
+      false
+    end
+
+    def mkdir!
       false
     end
 
@@ -318,8 +331,8 @@ class Metis
       false
     end
 
-    def is_writable?
-      true
+    def is_writable?(type)
+      type == :file
     end
 
     def upload!(uploaded_file)
@@ -373,7 +386,20 @@ class Metis
       false
     end
 
-    def is_writable?
+    def is_writable?(type)
+      true
+    end
+
+    def mkdir!
+      Metis::Folder.create(
+          folder: parent.respond_to?(:folder) ? parent.folder : nil,
+          folder_name: path_segment,
+          bucket: bucket,
+          project_name: bucket.project_name,
+          read_only: false,
+          author:  Metis::File.author(user),
+      )
+
       true
     end
   end

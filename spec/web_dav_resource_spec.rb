@@ -97,6 +97,63 @@ describe Metis::WebDavResource do
     end
   end
 
+  describe 'mkcol' do
+    let(:method) { 'MKCOL' }
+    let(:path) { "/webdav/projects/#{project_name}/#{bucket_name}/#{mkcol_dir}" }
+    let(:mkcol_dir) { 'my_new_dir' }
+
+    subject do
+      subject_request
+      expect(last_response.status).to eq(201)
+      Metis::Folder.from_path(bucket, mkcol_dir + "/").last&.folder_path
+    end
+
+    it { is_expected.to eq ["#{mkcol_dir}"]  }
+
+    context 'for a folder in the root path' do
+      let(:path) { "/webdav/#{mkcol_dir}/"}
+
+      it 'is not allowed' do
+        subject_request
+        expect(last_response.status).to eq(403)
+      end
+    end
+
+    context 'for a folder in a project path' do
+      let(:path) { "/webdav/#{project_name}/#{mkcol_dir}/"}
+
+      it 'is not allowed' do
+        subject_request
+        expect(last_response.status).to eq(403)
+      end
+    end
+
+    context 'for an existing directory' do
+      let(:directories) { ["abc"] }
+      let(:mkcol_dir) { directories.first }
+
+      it 'is not allowed' do
+        subject_request
+        expect(last_response.status).to eq(405)
+      end
+
+      context 'as the child of it' do
+        let(:mkcol_dir) { "#{directories.first}/def" }
+
+        it { is_expected.to eq [directories.first, "def"]  }
+      end
+    end
+
+    context 'for an existing file' do
+      let(:file_name) { mkcol_dir }
+
+      it 'is not allowed' do
+        subject_request
+        expect(last_response.status).to eq(405)
+      end
+    end
+  end
+
   describe 'put' do
     let(:method) { 'PUT' }
     let(:path) { "/webdav/projects/#{project_name}/#{bucket_name}/#{put_file_name}" }
