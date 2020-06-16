@@ -21,6 +21,7 @@ x-metis_base: &metis_base
     dockerfile: docker/app/Dockerfile.development
   volumes:
     - .:/app:cached
+    - ~/.ssh:/root/.ssh:ro
     - app-gems:/app/vendor/bundle:rw
     - node-modules:/app/node_modules:rw
     - data-dir:/app/data:rw
