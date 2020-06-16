@@ -57,3 +57,6 @@ jobs:
       if: ${{ steps.first_test_run.outcome == 'success' }}
       run: |
         bundle exec rspec spec/
+    - name: Run UI test suite
+        run: |
+          npm run test
