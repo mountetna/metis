@@ -41,6 +41,7 @@ class FolderView extends React.Component {
     let { bucket_name, folder_name, fileSelected } = this.props;
     if (event === undefined) return;
     let { files } = input;
+
     for (let i = 0; i < files.length; i++) fileSelected(bucket_name, folder_name, files[i]);
 
     // Reset the input field.
