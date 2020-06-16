@@ -58,5 +58,5 @@ jobs:
       run: |
         bundle exec rspec spec/
     - name: Run UI test suite
-        run: |
-          npm run test
+      run: |
+        npm run test
