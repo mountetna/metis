@@ -59,4 +59,4 @@ jobs:
         bundle exec rspec spec/
     - name: Run UI test suite
       run: |
-        npm run test
+        ./node_modules/.bin/jest
