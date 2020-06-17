@@ -62,8 +62,10 @@ jobs:
         bundle exec rspec spec/
     - name: Run test suite again to detect flaky failures
       if: ${{ steps.first_test_run.outcome == 'success' }}
+      id: second_test_run
       run: |
         bundle exec rspec spec/
     - name: Run UI test suite
+      if: ${{ steps.second_test_run.outcome == 'success' }}
       run: |
         ./node_modules/.bin/jest
