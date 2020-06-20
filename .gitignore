@@ -24,3 +24,4 @@ spec/examples.txt
 *.swp
 .docker-build-mark
 
+spec/data/
