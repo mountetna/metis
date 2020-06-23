@@ -31,6 +31,7 @@ x-metis_base: &metis_base
     COVERAGE: 'true'
     DATABASE_HOST: 'db'
     METIS_ENV: 'development'
+  entrypoint: docker/app/docker-entrypoint.sh
 
 services:
   metis_app:
