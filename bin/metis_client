@@ -589,6 +589,9 @@ EOT
         opts.on("-l", "--long", "List file properties") do |n|
           options[:long] = true
         end
+        opts.on("-r", "--recursive", "List all (only) files recursively") do |n|
+          options[:recursive] = true
+        end
       end
     end
 
@@ -636,6 +639,38 @@ EOT
     end
 
     def display(files: [], folders: [], buckets: [])
+      if options[:recursive]
+        def list_all_files(folders, file_path, files)
+          if folders.length > 0
+
+            folders.each do |fo|
+              new_file_path = file_path + "/" + fo[:folder_name]
+              folder_sub = @shell.client.list_folder(@shell.project_name, new_file_path)
+
+              if folder_sub[:files].length > 0
+                folder_sub[:files].each do |f|
+                  f[:file_name] = fo[:bucket_name] + "/" + f[:file_path] #name + "/" + fo[:folder_name] + "/" + f[:file_name]
+                  files = files.append(f)
+                end
+              end
+
+              if folder_sub[:folders].length > 0
+                files = list_all_files(folder_sub[:folders], new_file_path, files)
+              end
+
+            end
+
+            return files
+          end
+        end
+
+        if folders.length > 0
+          file_path = ::File.dirname( folders[0][:bucket_name] + "/" + folders[0][:folder_path] )
+          files = list_all_files(folders, file_path, files)
+          folders = []
+        end
+      end
+
       if options[:long]
         long_display(files: files, folders: folders, buckets: buckets)
       else
@@ -655,6 +690,7 @@ EOT
               d.strftime("%b %d %H:%M")
           },
           is_file ? (file[:archive_id] ? "archived" : "unarchived") : "n/a",
+          file[:file_hash] || "n/a",
           file[:file_name] || "#{file[:folder_name]}/"
         ]
       end + buckets.map do |bucket|
@@ -662,6 +698,7 @@ EOT
           bucket[:access],
           bucket[:count],
           bucket[:description],
+          "n/a",
           "n/a",
           "#{bucket[:bucket_name]}/"
         ]
